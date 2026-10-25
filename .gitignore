@@ -23,3 +23,4 @@ logs/*.jsonl
 # Temporary files
 *.tmp
 *.bak
+scripts/*.ps1.backup
