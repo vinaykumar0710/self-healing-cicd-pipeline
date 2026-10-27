@@ -5,6 +5,10 @@ param(
 
     [string]$CommitSha = "local",
 
+    [string]$CandidateImage,
+
+    [string]$RuntimeRoot,
+
     [ValidateSet("healthy", "unhealthy")]
     [string]$CandidateHealth = "healthy",
 
@@ -19,25 +23,57 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+# Repository containing this script and the application source.
+$ScriptRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+
+# Persistent runtime directory containing deployment state, Compose,
+# Nginx configuration, and audit logs.
+if ([string]::IsNullOrWhiteSpace($RuntimeRoot)) {
+    $Root = $ScriptRoot
+}
+else {
+    if (-not (Test-Path -LiteralPath $RuntimeRoot -PathType Container)) {
+        throw "RuntimeRoot directory does not exist: $RuntimeRoot"
+    }
+
+    $Root = (Resolve-Path -LiteralPath $RuntimeRoot).Path
+}
+
 $StateFile = Join-Path $Root "deployment-state.json"
 $UpstreamFile = Join-Path $Root "proxy\upstream.conf"
 $AuditFile = Join-Path $Root "logs\deployments.jsonl"
 $ComposeFile = Join-Path $Root "compose.yaml"
+
 $Network = "self-healing-cicd_default"
+$ComposeProject = "self-healing-cicd"
 $CandidateName = "self-healing-candidate"
 
-if (-not (Test-Path $StateFile)) {
+# Validate required runtime files.
+if (-not (Test-Path -LiteralPath $StateFile -PathType Leaf)) {
     throw "Deployment state file not found: $StateFile"
 }
-if (-not (Test-Path $UpstreamFile)) {
+
+if (-not (Test-Path -LiteralPath $UpstreamFile -PathType Leaf)) {
     throw "Nginx upstream file not found: $UpstreamFile"
 }
-if (-not (Test-Path $AuditFile)) {
-    throw "Audit log not found: $AuditFile"
+
+if (-not (Test-Path -LiteralPath $ComposeFile -PathType Leaf)) {
+    throw "Compose file not found: $ComposeFile"
 }
 
-$OriginalStateText = Get-Content $StateFile -Raw
+# Ensure the audit log exists, including on a fresh checkout.
+$LogDirectory = Split-Path -Parent $AuditFile
+
+if (-not (Test-Path -LiteralPath $LogDirectory -PathType Container)) {
+    New-Item -ItemType Directory -Path $LogDirectory -Force | Out-Null
+}
+
+if (-not (Test-Path -LiteralPath $AuditFile -PathType Leaf)) {
+    New-Item -ItemType File -Path $AuditFile -Force | Out-Null
+}
+
+# Read the last successfully deployed release.
+$OriginalStateText = Get-Content -LiteralPath $StateFile -Raw
 $State = $OriginalStateText | ConvertFrom-Json
 
 $PreviousColor = [string]$State.active_color
@@ -48,20 +84,40 @@ if ($PreviousColor -notin @("blue", "green")) {
     throw "Invalid active_color in deployment-state.json."
 }
 
+if ([string]::IsNullOrWhiteSpace($PreviousVersion)) {
+    throw "active_version is missing from deployment-state.json."
+}
+
+if ([string]::IsNullOrWhiteSpace($PreviousImage)) {
+    throw "last_known_good_image is missing from deployment-state.json."
+}
+
+# Choose the inactive color for the next release.
 $CandidateColor = if ($PreviousColor -eq "blue") {
     "green"
-} else {
+}
+else {
     "blue"
 }
+
 $CandidateService = "app-$CandidateColor"
 
 $SafeSha = $CommitSha -replace '[^a-zA-Z0-9_.-]', ''
+
 if (-not $SafeSha) {
     $SafeSha = "local"
 }
 
-$UniqueTag = (Get-Date).ToUniversalTime().ToString("yyyyMMddHHmmssfff")
-$CandidateImage = "self-healing-cicd:candidate-$SafeSha-$UniqueTag"
+# Generate an image tag only when Jenkins did not supply one.
+$UseProvidedCandidateImage = -not [string]::IsNullOrWhiteSpace(
+    $CandidateImage
+)
+
+if (-not $UseProvidedCandidateImage) {
+    $UniqueTag = (Get-Date).ToUniversalTime().ToString("yyyyMMddHHmmssfff")
+    $CandidateImage = "self-healing-cicd:candidate-$SafeSha-$UniqueTag"
+}
+
 $StartedAt = (Get-Date).ToUniversalTime().ToString("o")
 
 $DeploymentStatus = "FAILED"
@@ -72,12 +128,17 @@ $InactiveServiceModified = $false
 $PromotionAttempted = $false
 $InactiveBefore = $null
 $Proxy = $null
-$OldUpstream = Get-Content $UpstreamFile -Raw
+
+$OldUpstream = Get-Content -LiteralPath $UpstreamFile -Raw
 
 function Invoke-DockerChecked {
-    param([string[]]$DockerArgs)
+    param(
+        [Parameter(Mandatory = $true)]
+        [string[]]$DockerArgs
+    )
 
     & docker @DockerArgs
+
     if ($LASTEXITCODE -ne 0) {
         throw "Docker command failed: docker $($DockerArgs -join ' ')"
     }
@@ -85,15 +146,23 @@ function Invoke-DockerChecked {
 
 function Invoke-ComposeService {
     param(
+        [Parameter(Mandatory = $true)]
         [string]$Service,
+
+        [Parameter(Mandatory = $true)]
         [string]$Image,
+
+        [Parameter(Mandatory = $true)]
         [string]$Version,
+
+        [Parameter(Mandatory = $true)]
         [string]$Health
     )
 
     $Prefix = if ($Service -eq "app-blue") {
         "BLUE"
-    } else {
+    }
+    else {
         "GREEN"
     }
 
@@ -101,32 +170,61 @@ function Invoke-ComposeService {
     $VersionVar = "${Prefix}_VERSION"
     $HealthVar = "${Prefix}_HEALTH_STATUS"
 
-    $OldImageEnv = [Environment]::GetEnvironmentVariable($ImageVar, "Process")
-    $OldVersionEnv = [Environment]::GetEnvironmentVariable($VersionVar, "Process")
-    $OldHealthEnv = [Environment]::GetEnvironmentVariable($HealthVar, "Process")
+    $OldImageEnv = [Environment]::GetEnvironmentVariable(
+        $ImageVar, "Process"
+    )
+
+    $OldVersionEnv = [Environment]::GetEnvironmentVariable(
+        $VersionVar, "Process"
+    )
+
+    $OldHealthEnv = [Environment]::GetEnvironmentVariable(
+        $HealthVar, "Process"
+    )
 
     try {
-        [Environment]::SetEnvironmentVariable($ImageVar, $Image, "Process")
-        [Environment]::SetEnvironmentVariable($VersionVar, $Version, "Process")
-        [Environment]::SetEnvironmentVariable($HealthVar, $Health, "Process")
+        [Environment]::SetEnvironmentVariable(
+            $ImageVar, $Image, "Process"
+        )
+
+        [Environment]::SetEnvironmentVariable(
+            $VersionVar, $Version, "Process"
+        )
+
+        [Environment]::SetEnvironmentVariable(
+            $HealthVar, $Health, "Process"
+        )
 
         Invoke-DockerChecked @(
             "compose",
+            "--project-name", $ComposeProject,
             "--project-directory", $Root,
             "-f", $ComposeFile,
-            "up", "-d", "--no-build", "--force-recreate", $Service
+            "up", "-d", "--no-build", "--force-recreate",
+            $Service
         )
     }
     finally {
-        [Environment]::SetEnvironmentVariable($ImageVar, $OldImageEnv, "Process")
-        [Environment]::SetEnvironmentVariable($VersionVar, $OldVersionEnv, "Process")
-        [Environment]::SetEnvironmentVariable($HealthVar, $OldHealthEnv, "Process")
+        [Environment]::SetEnvironmentVariable(
+            $ImageVar, $OldImageEnv, "Process"
+        )
+
+        [Environment]::SetEnvironmentVariable(
+            $VersionVar, $OldVersionEnv, "Process"
+        )
+
+        [Environment]::SetEnvironmentVariable(
+            $HealthVar, $OldHealthEnv, "Process"
+        )
     }
 }
 
 function Test-ServiceHealth {
     param(
+        [Parameter(Mandatory = $true)]
         [string]$Service,
+
+        [Parameter(Mandatory = $true)]
         [string]$Image
     )
 
@@ -137,7 +235,10 @@ function Test-ServiceHealth {
             $Image `
             -c "import urllib.request; print(urllib.request.urlopen('http://${Service}:5000/health', timeout=2).read().decode())" 2>$null
 
-        if ($LASTEXITCODE -eq 0 -and $Output -match '"status":\s*"healthy"') {
+        if (
+            $LASTEXITCODE -eq 0 -and
+            $Output -match '"status":\s*"healthy"'
+        ) {
             Write-Host "Health check passed for $Service."
             return $true
         }
@@ -153,9 +254,22 @@ function Test-ServiceHealth {
 }
 
 try {
-    # Capture the inactive service's previous configuration.
+    # Confirm that the expected Compose network already exists.
+    $NetworkExists = @(
+        & docker network ls --format "{{.Name}}"
+    ) -contains $Network
+
+    if ($LASTEXITCODE -ne 0 -or -not $NetworkExists) {
+        throw "Required Docker network does not exist: $Network"
+    }
+
+    # Capture the inactive service's existing configuration for recovery.
     $InactiveId = (
-        & docker compose --project-directory $Root -f $ComposeFile ps -q $CandidateService
+        & docker compose `
+            --project-name $ComposeProject `
+            --project-directory $Root `
+            -f $ComposeFile `
+            ps -q $CandidateService
     ).Trim()
 
     if ($LASTEXITCODE -ne 0 -or -not $InactiveId) {
@@ -163,6 +277,7 @@ try {
     }
 
     $InspectOutput = & docker inspect $InactiveId
+
     if ($LASTEXITCODE -ne 0) {
         throw "Cannot inspect inactive service $CandidateService."
     }
@@ -174,20 +289,42 @@ try {
 
     foreach ($Entry in $InactiveBefore.Config.Env) {
         if ($Entry -like "APP_VERSION=*") {
-            $OldInactiveVersion = $Entry.Substring("APP_VERSION=".Length)
+            $OldInactiveVersion = $Entry.Substring(
+                "APP_VERSION=".Length
+            )
         }
+
         if ($Entry -like "HEALTH_STATUS=*") {
-            $OldInactiveHealth = $Entry.Substring("HEALTH_STATUS=".Length)
+            $OldInactiveHealth = $Entry.Substring(
+                "HEALTH_STATUS=".Length
+            )
         }
     }
 
-    Write-Host "Building candidate image: $CandidateImage"
-    Invoke-DockerChecked @("build", "-t", $CandidateImage, $Root)
+    # Use the CI-built image when supplied. Otherwise build locally.
+    if ($UseProvidedCandidateImage) {
+        Write-Host "Using CI-built candidate image: $CandidateImage"
 
-    # Remove any stale temporary candidate, if present.
+        & docker image inspect $CandidateImage *> $null
+
+        if ($LASTEXITCODE -ne 0) {
+            throw "CI candidate image not found in the Docker daemon: $CandidateImage"
+        }
+    }
+    else {
+        Write-Host "Building candidate image: $CandidateImage"
+
+        Invoke-DockerChecked @(
+            "build",
+            "-t", $CandidateImage,
+            $ScriptRoot
+        )
+    }
+
+    # Remove any stale temporary candidate container.
     & docker rm -f $CandidateName 2>$null | Out-Null
 
-    # Start candidate separately; active traffic is not changed here.
+    # Start an isolated candidate without changing production traffic.
     Invoke-DockerChecked @(
         "run", "-d",
         "--name", $CandidateName,
@@ -199,6 +336,7 @@ try {
 
     $CandidateStarted = $true
 
+    # Test the candidate before modifying the inactive stable service.
     $Healthy = $false
 
     for ($Attempt = 1; $Attempt -le $Retries; $Attempt++) {
@@ -208,7 +346,10 @@ try {
             $CandidateImage `
             -c "import urllib.request; print(urllib.request.urlopen('http://self-healing-candidate:5000/health', timeout=2).read().decode())" 2>$null
 
-        if ($LASTEXITCODE -eq 0 -and $Output -match '"status":\s*"healthy"') {
+        if (
+            $LASTEXITCODE -eq 0 -and
+            $Output -match '"status":\s*"healthy"'
+        ) {
             $Healthy = $true
             break
         }
@@ -224,8 +365,7 @@ try {
         throw "Candidate failed health checks. Active traffic remains unchanged."
     }
 
-    # Candidate passed its initial health check.
-    # Recreate only the inactive Compose service.
+    # Replace only the inactive stable service.
     Write-Host "Candidate is healthy. Preparing $CandidateService."
 
     $InactiveServiceModified = $true
@@ -236,19 +376,30 @@ try {
         -Version $CandidateVersion `
         -Health "healthy"
 
-    if (-not (Test-ServiceHealth -Service $CandidateService -Image $CandidateImage)) {
+    if (
+        -not (
+            Test-ServiceHealth `
+                -Service $CandidateService `
+                -Image $CandidateImage
+        )
+    ) {
         throw "Stable candidate service failed health checks."
     }
 
+    # Locate the Nginx proxy belonging to the same Compose project.
     $Proxy = (
-        & docker compose --project-directory $Root -f $ComposeFile ps -q proxy
+        & docker compose `
+            --project-name $ComposeProject `
+            --project-directory $Root `
+            -f $ComposeFile `
+            ps -q proxy
     ).Trim()
 
     if ($LASTEXITCODE -ne 0 -or -not $Proxy) {
         throw "Nginx proxy container was not found."
     }
 
-    # Promote only after the stable service is healthy.
+    # Route traffic to the candidate only after its health check passes.
     $NewUpstream = @"
 upstream flask_app {
     server ${CandidateService}:5000;
@@ -256,18 +407,22 @@ upstream flask_app {
 "@
 
     $PromotionAttempted = $true
-    Set-Content -Path $UpstreamFile -Value $NewUpstream -NoNewline
+
+    Set-Content `
+        -LiteralPath $UpstreamFile `
+        -Value $NewUpstream `
+        -NoNewline
 
     Invoke-DockerChecked @("exec", $Proxy, "nginx", "-t")
     Invoke-DockerChecked @("exec", $Proxy, "nginx", "-s", "reload")
 
-    # Verify that public traffic reaches the candidate.
+    # Verify that the public endpoint serves the candidate version.
     $PublicVerified = $false
 
     for ($Attempt = 1; $Attempt -le $Retries; $Attempt++) {
         try {
             $Public = Invoke-RestMethod `
-                "http://localhost:8080/version" `
+                -Uri "http://localhost:8080/version" `
                 -TimeoutSec 3
 
             if ($Public.version -eq $CandidateVersion) {
@@ -276,7 +431,7 @@ upstream flask_app {
             }
         }
         catch {
-            # Retry below.
+            Write-Host "Public verification attempt ${Attempt}/${Retries} failed."
         }
 
         if ($Attempt -lt $Retries) {
@@ -288,17 +443,17 @@ upstream flask_app {
         throw "Public endpoint verification failed after promotion."
     }
 
-    # Test-only fault injection: force rollback after traffic has switched.
+    # Fault injection for testing rollback after traffic promotion.
     if ($SimulatePostPromotionFailure) {
         throw "Simulated failure after traffic promotion."
     }
 
-    # Update deployment state only after promotion is verified.
+    # Record the new last-known-good release only after verification.
     [ordered]@{
         active_color = $CandidateColor
         active_version = $CandidateVersion
         last_known_good_image = $CandidateImage
-    } | ConvertTo-Json | Set-Content $StateFile -Encoding utf8
+    } | ConvertTo-Json | Set-Content -LiteralPath $StateFile -Encoding utf8
 
     $DeploymentStatus = "SUCCESS"
     $RollbackStatus = "NOT_REQUIRED"
@@ -314,10 +469,17 @@ catch {
     # Restore the previous Nginx route if promotion was attempted.
     if ($PromotionAttempted) {
         try {
-            Set-Content -Path $UpstreamFile -Value $OldUpstream -NoNewline
+            Set-Content `
+                -LiteralPath $UpstreamFile `
+                -Value $OldUpstream `
+                -NoNewline
 
             $Proxy = (
-                & docker compose --project-directory $Root -f $ComposeFile ps -q proxy
+                & docker compose `
+                    --project-name $ComposeProject `
+                    --project-directory $Root `
+                    -f $ComposeFile `
+                    ps -q proxy
             ).Trim()
 
             if ($LASTEXITCODE -ne 0 -or -not $Proxy) {
@@ -346,17 +508,22 @@ catch {
         }
     }
 
-    # Restore the recorded state if it was changed before an error.
+    # Restore the original deployment state.
     try {
-        Set-Content -Path $StateFile -Value $OriginalStateText -Encoding utf8
+        Set-Content `
+            -LiteralPath $StateFile `
+            -Value $OriginalStateText `
+            -Encoding utf8
     }
     catch {
         $RecoveryErrors += "State restoration failed: $($_.Exception.Message)"
     }
 
-    # Verify the old release is again serving public traffic.
+    # Verify that the previously deployed version serves healthy traffic.
     try {
-        $Recovery = Invoke-RestMethod "http://localhost:8080/health" -TimeoutSec 5
+        $Recovery = Invoke-RestMethod `
+            -Uri "http://localhost:8080/health" `
+            -TimeoutSec 5
 
         if (
             $Recovery.status -ne "healthy" -or
@@ -381,7 +548,8 @@ catch {
     }
 }
 finally {
-    [ordered]@{
+    # Write one JSON audit record for every deployment attempt.
+    $AuditRecord = [ordered]@{
         commit_sha = $CommitSha
         candidate_color = $CandidateColor
         candidate_version = $CandidateVersion
@@ -394,7 +562,11 @@ finally {
         started_at = $StartedAt
         finished_at = (Get-Date).ToUniversalTime().ToString("o")
         error = $ErrorMessage
-    } | ConvertTo-Json -Compress | Add-Content -Path $AuditFile -Encoding utf8
+    }
+
+    $AuditRecord |
+        ConvertTo-Json -Compress |
+        Add-Content -LiteralPath $AuditFile -Encoding utf8
 
     if ($CandidateStarted) {
         & docker rm -f $CandidateName 2>$null | Out-Null
