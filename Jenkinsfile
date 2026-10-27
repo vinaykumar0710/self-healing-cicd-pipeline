@@ -2,6 +2,14 @@
 pipeline {
     agent none
 
+    parameters {
+        booleanParam(
+            name: 'SIMULATE_POST_PROMOTION_FAILURE',
+            defaultValue: false,
+            description: 'Testing only: inject a failure after traffic promotion to verify rollback.'
+        )
+    }
+
     options {
         timestamps()
         disableConcurrentBuilds()
@@ -105,13 +113,21 @@ pipeline {
                     Write-Host "Image ID: $imageId"
                     Write-Host "Commit: $actualCommit"
 
-                    & $controller `
-                        -CandidateVersion "build-$env:BUILD_NUMBER" `
-                        -CommitSha $actualCommit `
-                        -CandidateImage $env:APP_IMAGE `
-                        -RuntimeRoot $env:RUNTIME_ROOT `
-                        -Retries 5 `
-                        -DelaySeconds 2
+                    $deployArgs = @{
+                        CandidateVersion = "build-$env:BUILD_NUMBER"
+                        CommitSha = $actualCommit
+                        CandidateImage = $env:APP_IMAGE
+                        RuntimeRoot = $env:RUNTIME_ROOT
+                        Retries = 5
+                        DelaySeconds = 2
+                    }
+
+                    if ($env:SIMULATE_POST_PROMOTION_FAILURE -eq "true") {
+                        $deployArgs.SimulatePostPromotionFailure = $true
+                        Write-Host "WARNING: Post-promotion failure simulation is ENABLED."
+                    }
+
+                    & $controller @deployArgs
 
                     if ($LASTEXITCODE -ne 0) {
                         throw "Deployment failed or recovery was not verified."
