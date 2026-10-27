@@ -461,8 +461,11 @@ upstream flask_app {
     Write-Host "Deployment succeeded: $CandidateVersion ($CandidateColor)."
 }
 catch {
-    $ErrorMessage = $_.Exception.Message
+    $ErrorMessage = ($_ | Out-String).Trim()
     Write-Host "Deployment failed: $ErrorMessage"
+    Write-Host "Full exception details:"
+    Write-Host ($_ | Format-List * -Force | Out-String)
+    Write-Host "Script stack trace: $($_.ScriptStackTrace)"
 
     $RecoveryErrors = @()
 
