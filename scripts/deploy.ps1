@@ -229,21 +229,46 @@ function Test-ServiceHealth {
     )
 
     for ($Attempt = 1; $Attempt -le $Retries; $Attempt++) {
-        $Output = & docker run --rm `
-            --network $Network `
-            --entrypoint python `
-            $Image `
-            -c "import urllib.request; print(urllib.request.urlopen('http://${Service}:5000/health', timeout=2).read().decode())" 2>$null
+        $Output = @()
+        $DockerExitCode = 1
+
+        # Allow expected Docker/Python errors without stopping the retry loop.
+        $PreviousErrorActionPreference = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
+
+        try {
+            $Output = & docker run --rm `
+                --network $Network `
+                --entrypoint python `
+                $Image `
+                -c "import urllib.request; print(urllib.request.urlopen('http://${Service}:5000/health', timeout=2).read().decode())" 2>&1
+
+            $DockerExitCode = $LASTEXITCODE
+        }
+        catch {
+            $Output += $_.ToString()
+        }
+        finally {
+            $ErrorActionPreference = $PreviousErrorActionPreference
+        }
+
+        $OutputText = (
+            $Output | ForEach-Object { "$_" }
+        ) -join "`n"
 
         if (
-            $LASTEXITCODE -eq 0 -and
-            $Output -match '"status":\s*"healthy"'
+            $DockerExitCode -eq 0 -and
+            $OutputText -match '"status":\s*"healthy"'
         ) {
             Write-Host "Health check passed for $Service."
             return $true
         }
 
         Write-Host "Health check attempt ${Attempt}/${Retries} failed for $Service."
+
+        if (-not [string]::IsNullOrWhiteSpace($OutputText)) {
+            Write-Host $OutputText
+        }
 
         if ($Attempt -lt $Retries) {
             Start-Sleep -Seconds $DelaySeconds
