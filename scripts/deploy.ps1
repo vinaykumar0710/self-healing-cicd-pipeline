@@ -340,21 +340,40 @@ try {
     $Healthy = $false
 
     for ($Attempt = 1; $Attempt -le $Retries; $Attempt++) {
-        $Output = & docker run --rm `
-            --network $Network `
-            --entrypoint python `
-            $CandidateImage `
-            -c "import urllib.request; print(urllib.request.urlopen('http://self-healing-candidate:5000/health', timeout=2).read().decode())" 2>$null
+        $Output = @()
+        $DockerExitCode = -1
+
+        $PreviousErrorActionPreference = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
+
+        try {
+            $Output = & docker run --rm `
+                --network $Network `
+                --entrypoint python `
+                $CandidateImage `
+                -c "import urllib.request; print(urllib.request.urlopen('http://self-healing-candidate:5000/health', timeout=2).read().decode())" 2>&1
+
+            $DockerExitCode = $LASTEXITCODE
+        }
+        catch {
+            $Output += $_.ToString()
+        }
+        finally {
+            $ErrorActionPreference = $PreviousErrorActionPreference
+        }
+
+        $OutputText = $Output | ForEach-Object { "$_" } | Out-String
 
         if (
-            $LASTEXITCODE -eq 0 -and
-            $Output -match '"status":\s*"healthy"'
+            $DockerExitCode -eq 0 -and
+            $OutputText -match '"status":\s*"healthy"'
         ) {
             $Healthy = $true
             break
         }
 
-        Write-Host "Candidate health attempt ${Attempt}/${Retries} failed."
+        Write-Host "Candidate health attempt ${Attempt}/${Retries} failed (exit code: $DockerExitCode)."
+        Write-Host $OutputText
 
         if ($Attempt -lt $Retries) {
             Start-Sleep -Seconds $DelaySeconds
