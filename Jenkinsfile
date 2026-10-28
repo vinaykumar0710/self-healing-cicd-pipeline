@@ -1,4 +1,3 @@
-
 pipeline {
     agent none
 
@@ -147,10 +146,19 @@ pipeline {
                         Write-Host "WARNING: Post-promotion failure simulation is ENABLED."
                     }
 
-                    # Run the controller in a child process so its exit code
-                    # can be inspected without terminating this PowerShell script.
-                    $controllerOutput = & powershell.exe @controllerArgs 2>&1
-                    $controllerExitCode = $LASTEXITCODE
+                    # Run the controller in a child PowerShell process.
+                    # Temporarily allow native stderr records to be captured
+                    # without terminating this Jenkins PowerShell step.
+                    $previousErrorActionPreference = $ErrorActionPreference
+
+                    try {
+                        $ErrorActionPreference = "Continue"
+                        $controllerOutput = & powershell.exe @controllerArgs 2>&1
+                        $controllerExitCode = $LASTEXITCODE
+                    }
+                    finally {
+                        $ErrorActionPreference = $previousErrorActionPreference
+                    }
 
                     $controllerOutput | ForEach-Object {
                         Write-Host $_
@@ -160,7 +168,7 @@ pipeline {
                     $auditFile = Join-Path $env:RUNTIME_ROOT "logs\\deployments.jsonl"
 
                     if ($isRollbackTest) {
-                        # The injected failure must cause the controller to exit nonzero.
+                        # The injected failure must cause a nonzero controller exit.
                         if ($controllerExitCode -eq 0) {
                             throw "Rollback test failed: controller unexpectedly returned success after injected failure."
                         }
@@ -182,7 +190,7 @@ pipeline {
                             throw "Rollback test failed: latest audit record is not valid JSON."
                         }
 
-                        # The latest record must belong to this exact build.
+                        # Confirm that this build's failure and rollback were recorded.
                         if (
                             $record.candidate_version -ne $expectedVersion -or
                             $record.commit_sha -ne $actualCommit -or
@@ -194,6 +202,7 @@ pipeline {
                             throw "Rollback test failed: latest audit record does not confirm this build's expected verified rollback."
                         }
 
+                        # Verify that the previous release is serving traffic.
                         $health = Invoke-RestMethod `
                             -Uri "http://localhost:8080/health" `
                             -TimeoutSec 5
@@ -219,9 +228,7 @@ pipeline {
 
                         Write-Host "ROLLBACK TEST PASSED: injected failure was detected; the previous release was restored and verified."
 
-                        # The controller's nonzero code was expected and verified.
-                        # Clear the native exit-code marker so Jenkins does not
-                        # mark this successfully verified test as a failed step.
+                        # The nonzero controller exit was expected and verified.
                         $global:LASTEXITCODE = 0
                     }
                     else {
