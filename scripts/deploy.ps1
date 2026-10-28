@@ -1,4 +1,3 @@
-
 param(
     [Parameter(Mandatory = $true)]
     [string]$CandidateVersion,
@@ -264,11 +263,26 @@ function Test-ServiceHealth {
             return $true
         }
 
-        Write-Host "Health check attempt ${Attempt}/${Retries} failed for $Service."
-
-        if (-not [string]::IsNullOrWhiteSpace($OutputText)) {
-            Write-Host $OutputText
+        # Summarize common transient errors instead of printing full stack traces.
+        $FailureSummary = if (
+            $OutputText -match "Connection refused|urlopen error|timed out|Timeout"
+        ) {
+            "Application is not ready yet or the health endpoint is temporarily unreachable."
         }
+        else {
+            $LastUsefulLine = $OutputText -split "`r?`n" |
+                Where-Object { $_.Trim() -ne "" } |
+                Select-Object -Last 1
+
+            if ($LastUsefulLine) {
+                $LastUsefulLine.Trim()
+            }
+            else {
+                "Health endpoint did not return a healthy response."
+            }
+        }
+
+        Write-Host "Health check attempt ${Attempt}/${Retries} failed for ${Service}. $FailureSummary"
 
         if ($Attempt -lt $Retries) {
             Start-Sleep -Seconds $DelaySeconds
@@ -397,8 +411,26 @@ try {
             break
         }
 
-        Write-Host "Candidate health attempt ${Attempt}/${Retries} failed (exit code: $DockerExitCode)."
-        Write-Host $OutputText
+        # Summarize common transient errors instead of printing full stack traces.
+        $FailureSummary = if (
+            $OutputText -match "Connection refused|urlopen error|timed out|Timeout"
+        ) {
+            "Application is not ready yet or the health endpoint is temporarily unreachable."
+        }
+        else {
+            $LastUsefulLine = $OutputText -split "`r?`n" |
+                Where-Object { $_.Trim() -ne "" } |
+                Select-Object -Last 1
+
+            if ($LastUsefulLine) {
+                $LastUsefulLine.Trim()
+            }
+            else {
+                "Health endpoint did not return a healthy response."
+            }
+        }
+
+        Write-Host "Candidate health attempt ${Attempt}/${Retries} failed (exit code: $DockerExitCode). $FailureSummary"
 
         if ($Attempt -lt $Retries) {
             Start-Sleep -Seconds $DelaySeconds
