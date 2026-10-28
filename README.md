@@ -254,6 +254,23 @@ The deployment controller uses:
 
 Avoid manually editing runtime state while a deployment is in progress. Before committing changes, inspect `git status` and stage only the intended source files.
 
+## Pipeline Execution Evidence
+
+### Successful Deployment — Jenkins Build #13
+
+The pipeline passed all four application tests, built the Docker image, deployed the candidate release, and verified the deployment health.
+
+![Jenkins Build #13 — Successful Deployment](evidence/build-13-success.png)
+
+[View Build #13 Console Log](evidence/build-13-console.txt)
+
+### Automatic Rollback — Jenkins Build #14
+
+The pipeline injected a simulated failure after traffic promotion, detected the failure, restored the previous known-good release, and verified recovery. Jenkins reported the rollback test as successful.
+
+![Jenkins Build #14 — Automatic Rollback](evidence/build-14-rollback.png)
+
+[View Build #14 Console Log](evidence/build-14-console.txt)
 ## Future Improvements
 
 - Add build and deployment notifications.
