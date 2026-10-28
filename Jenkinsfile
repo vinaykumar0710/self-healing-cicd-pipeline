@@ -93,13 +93,17 @@ pipeline {
 
                     $actualCommit = (git rev-parse HEAD).Trim()
 
+                    if ($LASTEXITCODE -ne 0) {
+                        throw "Unable to determine Windows checkout commit."
+                    }
+
                     if ($actualCommit -ne $env:DEPLOY_COMMIT) {
                         throw "Windows checkout commit does not match CI build commit."
                     }
 
                     $controller = Join-Path $PWD "scripts\\deploy.ps1"
 
-                    if (-not (Test-Path $controller)) {
+                    if (-not (Test-Path -LiteralPath $controller -PathType Leaf)) {
                         throw "Deployment controller not found: $controller"
                     }
 
@@ -113,38 +117,122 @@ pipeline {
                     Write-Host "Image ID: $imageId"
                     Write-Host "Commit: $actualCommit"
 
-                    $deployArgs = @{
-                        CandidateVersion = "build-$env:BUILD_NUMBER"
-                        CommitSha = $actualCommit
-                        CandidateImage = $env:APP_IMAGE
-                        RuntimeRoot = $env:RUNTIME_ROOT
-                        Retries = 5
-                        DelaySeconds = 2
-                    }
+                    $isRollbackTest = (
+                        $env:SIMULATE_POST_PROMOTION_FAILURE -eq "true"
+                    )
 
-                    if ($env:SIMULATE_POST_PROMOTION_FAILURE -eq "true") {
-                        $deployArgs.SimulatePostPromotionFailure = $true
+                    $controllerArgs = @(
+                        "-NoProfile"
+                        "-NonInteractive"
+                        "-ExecutionPolicy"
+                        "Bypass"
+                        "-File"
+                        $controller
+                        "-CandidateVersion"
+                        "build-$env:BUILD_NUMBER"
+                        "-CommitSha"
+                        $actualCommit
+                        "-CandidateImage"
+                        $env:APP_IMAGE
+                        "-RuntimeRoot"
+                        $env:RUNTIME_ROOT
+                        "-Retries"
+                        "5"
+                        "-DelaySeconds"
+                        "2"
+                    )
+
+                    if ($isRollbackTest) {
+                        $controllerArgs += "-SimulatePostPromotionFailure"
                         Write-Host "WARNING: Post-promotion failure simulation is ENABLED."
                     }
 
-                    & $controller @deployArgs
+                    # Run the controller in a child PowerShell process so its
+                    # exit code can be captured without terminating this script.
+                    & powershell.exe @controllerArgs
+                    $controllerExitCode = $LASTEXITCODE
 
-                    if ($LASTEXITCODE -ne 0) {
-                        throw "Deployment failed or recovery was not verified."
+                    $expectedVersion = "build-$env:BUILD_NUMBER"
+                    $auditFile = Join-Path $env:RUNTIME_ROOT "logs\\deployments.jsonl"
+
+                    if ($isRollbackTest) {
+                        # The injected deployment failure must return nonzero.
+                        if ($controllerExitCode -eq 0) {
+                            throw "Rollback test failed: controller unexpectedly returned success after injected failure."
+                        }
+
+                        if (-not (Test-Path -LiteralPath $auditFile -PathType Leaf)) {
+                            throw "Rollback test failed: audit log not found."
+                        }
+
+                        $auditLines = @(Get-Content -LiteralPath $auditFile)
+
+                        if ($auditLines.Count -eq 0) {
+                            throw "Rollback test failed: audit log is empty."
+                        }
+
+                        try {
+                            $record = $auditLines[-1] | ConvertFrom-Json -ErrorAction Stop
+                        }
+                        catch {
+                            throw "Rollback test failed: latest audit record is not valid JSON."
+                        }
+
+                        # Require the audit record to belong to this exact build.
+                        if (
+                            $record.candidate_version -ne $expectedVersion -or
+                            $record.commit_sha -ne $actualCommit -or
+                            $record.candidate_image -ne $env:APP_IMAGE -or
+                            $record.deployment_status -ne "FAILED" -or
+                            $record.rollback_status -ne "VERIFIED" -or
+                            $record.error -notmatch "Simulated failure after traffic promotion"
+                        ) {
+                            throw "Rollback test failed: latest audit record does not confirm this build's expected verified rollback."
+                        }
+
+                        $health = Invoke-RestMethod `
+                            -Uri "http://localhost:8080/health" `
+                            -TimeoutSec 5
+
+                        $stateFile = Join-Path $env:RUNTIME_ROOT "deployment-state.json"
+
+                        if (-not (Test-Path -LiteralPath $stateFile -PathType Leaf)) {
+                            throw "Rollback test failed: deployment state file not found."
+                        }
+
+                        $state = Get-Content -LiteralPath $stateFile -Raw |
+                            ConvertFrom-Json -ErrorAction Stop
+
+                        if (
+                            $health.status -ne "healthy" -or
+                            $health.version -ne $record.previous_version -or
+                            $state.active_version -ne $record.previous_version -or
+                            $state.active_color -ne $record.previous_color -or
+                            $state.last_known_good_image -ne $record.previous_image
+                        ) {
+                            throw "Rollback test failed: previous release health or deployment state could not be verified."
+                        }
+
+                        Write-Host "ROLLBACK TEST PASSED: injected failure was detected; the previous release was restored and verified."
                     }
+                    else {
+                        if ($controllerExitCode -ne 0) {
+                            throw "Deployment failed or recovery was not verified. Controller exit code: $controllerExitCode"
+                        }
 
-                    $health = Invoke-RestMethod `
-                        -Uri "http://localhost:8080/health" `
-                        -TimeoutSec 5
+                        $health = Invoke-RestMethod `
+                            -Uri "http://localhost:8080/health" `
+                            -TimeoutSec 5
 
-                    if (
-                        $health.status -ne "healthy" -or
-                        $health.version -ne "build-$env:BUILD_NUMBER"
-                    ) {
-                        throw "Post-deployment health/version verification failed."
+                        if (
+                            $health.status -ne "healthy" -or
+                            $health.version -ne $expectedVersion
+                        ) {
+                            throw "Post-deployment health/version verification failed."
+                        }
+
+                        Write-Host "Deployment verified: $($health.version)"
                     }
-
-                    Write-Host "Deployment verified: $($health.version)"
                 '''
             }
         }
@@ -152,15 +240,17 @@ pipeline {
 
     post {
         success {
-            echo 'Pipeline succeeded: tests, image build, deployment and health verification passed.'
+            script {
+                if (params.SIMULATE_POST_PROMOTION_FAILURE) {
+                    echo 'ROLLBACK TEST PASSED: Injected failure detected; previous release restored and verified.'
+                } else {
+                    echo 'PIPELINE PASSED: Tests, image build, deployment and health verification completed successfully.'
+                }
+            }
         }
 
         failure {
-            echo 'Pipeline failed. Review the stage logs and deployment audit record.'
-        }
-
-        always {
-            echo 'Self-Healing CI/CD pipeline finished.'
+            echo 'PIPELINE FAILED: Review the stage logs and deployment audit record.'
         }
     }
 }
