@@ -1,0 +1,240 @@
+Started by user Vinaykumar Takankhar
+Obtained Jenkinsfile from git https://github.com/vinaykumar0710/self-healing-cicd-pipeline.git
+[Pipeline] Start of Pipeline
+[Pipeline] withEnv
+[Pipeline] {
+[Pipeline] timestamps
+[Pipeline] {
+[Pipeline] stage
+[Pipeline] { (Checkout and Test)
+[Pipeline] node
+[2026-10-28T06:29:20.531Z] Running on Jenkins in /var/jenkins_home/workspace/self-healing-cicd-pipeline
+[Pipeline] {
+[Pipeline] checkout
+[2026-10-28T06:29:20.612Z] Selected Git installation does not exist. Using Default
+[2026-10-28T06:29:20.612Z] The recommended git tool is: NONE
+[2026-10-28T06:29:20.613Z] No credentials specified
+[2026-10-28T06:29:20.613Z]  > git rev-parse --resolve-git-dir /var/jenkins_home/workspace/self-healing-cicd-pipeline/.git # timeout=10
+[2026-10-28T06:29:20.621Z] Fetching changes from the remote Git repository
+[2026-10-28T06:29:20.623Z]  > git config remote.origin.url https://github.com/vinaykumar0710/self-healing-cicd-pipeline.git # timeout=10
+[2026-10-28T06:29:20.633Z] Fetching upstream changes from https://github.com/vinaykumar0710/self-healing-cicd-pipeline.git
+[2026-10-28T06:29:20.633Z]  > git --version # timeout=10
+[2026-10-28T06:29:20.641Z]  > git --version # 'git version 2.47.3'
+[2026-10-28T06:29:20.641Z]  > git fetch --tags --force --progress -- https://github.com/vinaykumar0710/self-healing-cicd-pipeline.git +refs/heads/*:refs/remotes/origin/* # timeout=10
+[2026-10-28T06:29:22.156Z]  > git rev-parse refs/remotes/origin/main^{commit} # timeout=10
+[2026-10-28T06:29:22.164Z] Checking out Revision 62563daf8b46f93115c56d063deba7d3b222c316 (refs/remotes/origin/main)
+[2026-10-28T06:29:22.165Z]  > git config core.sparsecheckout # timeout=10
+[2026-10-28T06:29:22.173Z]  > git checkout -f 62563daf8b46f93115c56d063deba7d3b222c316 # timeout=10
+[2026-10-28T06:29:22.187Z] Commit message: "Reduce health check retry log noise"
+[2026-10-28T06:29:22.187Z]  > git rev-list --no-walk a04e7238dae22e4fcf5172b4f92bb12545234aa5 # timeout=10
+[Pipeline] sh
+[2026-10-28T06:29:22.493Z] + set -eu
+[2026-10-28T06:29:22.493Z] + python3 -m venv /tmp/self-healing-ci-13
+[2026-10-28T06:29:26.618Z] + /tmp/self-healing-ci-13/bin/python -m pip install --upgrade pip
+[2026-10-28T06:29:26.618Z] Requirement already satisfied: pip in /tmp/self-healing-ci-13/lib/python3.13/site-packages (25.1.1)
+[2026-10-28T06:29:27.169Z] Collecting pip
+[2026-10-28T06:29:27.169Z]   Using cached pip-26.2.2-py3-none-any.whl.metadata (4.6 kB)
+[2026-10-28T06:29:27.169Z] Using cached pip-26.2.2-py3-none-any.whl (1.8 MB)
+[2026-10-28T06:29:27.169Z] Installing collected packages: pip
+[2026-10-28T06:29:27.169Z]   Attempting uninstall: pip
+[2026-10-28T06:29:27.169Z]     Found existing installation: pip 25.1.1
+[2026-10-28T06:29:27.169Z]     Uninstalling pip-25.1.1:
+[2026-10-28T06:29:27.169Z]       Successfully uninstalled pip-25.1.1
+[2026-10-28T06:29:29.033Z] Successfully installed pip-26.2.2
+[2026-10-28T06:29:29.033Z] + /tmp/self-healing-ci-13/bin/python -m pip install -r requirements.txt
+[2026-10-28T06:29:29.584Z] Collecting Flask<4.0,>=3.1 (from -r requirements.txt (line 2))
+[2026-10-28T06:29:29.584Z]   Using cached flask-3.1.3-py3-none-any.whl.metadata (3.2 kB)
+[2026-10-28T06:29:29.835Z] Collecting pytest<10.0,>=8.0 (from -r requirements.txt (line 3))
+[2026-10-28T06:29:29.835Z]   Using cached pytest-9.2.0-py3-none-any.whl.metadata (7.9 kB)
+[2026-10-28T06:29:30.086Z] Collecting blinker>=1.9.0 (from Flask<4.0,>=3.1->-r requirements.txt (line 2))
+[2026-10-28T06:29:30.086Z]   Using cached blinker-1.9.0-py3-none-any.whl.metadata (1.6 kB)
+[2026-10-28T06:29:30.086Z] Collecting click>=8.1.3 (from Flask<4.0,>=3.1->-r requirements.txt (line 2))
+[2026-10-28T06:29:30.086Z]   Using cached click-8.5.0-py3-none-any.whl.metadata (2.6 kB)
+[2026-10-28T06:29:30.336Z] Collecting itsdangerous>=2.2.0 (from Flask<4.0,>=3.1->-r requirements.txt (line 2))
+[2026-10-28T06:29:30.336Z]   Using cached itsdangerous-2.2.0-py3-none-any.whl.metadata (1.9 kB)
+[2026-10-28T06:29:30.336Z] Collecting jinja2>=3.1.2 (from Flask<4.0,>=3.1->-r requirements.txt (line 2))
+[2026-10-28T06:29:30.336Z]   Using cached jinja2-3.1.6-py3-none-any.whl.metadata (2.9 kB)
+[2026-10-28T06:29:30.888Z] Collecting markupsafe>=2.1.1 (from Flask<4.0,>=3.1->-r requirements.txt (line 2))
+[2026-10-28T06:29:30.888Z]   Using cached markupsafe-3.0.4-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (2.7 kB)
+[2026-10-28T06:29:31.138Z] Collecting werkzeug>=3.1.0 (from Flask<4.0,>=3.1->-r requirements.txt (line 2))
+[2026-10-28T06:29:31.138Z]   Using cached werkzeug-3.1.9-py3-none-any.whl.metadata (4.1 kB)
+[2026-10-28T06:29:31.138Z] Collecting iniconfig>=2 (from pytest<10.0,>=8.0->-r requirements.txt (line 3))
+[2026-10-28T06:29:31.138Z]   Using cached iniconfig-2.3.1-py3-none-any.whl.metadata (2.8 kB)
+[2026-10-28T06:29:31.389Z] Collecting packaging>=24 (from pytest<10.0,>=8.0->-r requirements.txt (line 3))
+[2026-10-28T06:29:31.389Z]   Using cached packaging-26.3-py3-none-any.whl.metadata (3.5 kB)
+[2026-10-28T06:29:31.639Z] Collecting pluggy<2,>=1.6 (from pytest<10.0,>=8.0->-r requirements.txt (line 3))
+[2026-10-28T06:29:31.639Z]   Using cached pluggy-1.7.0-py3-none-any.whl.metadata (5.0 kB)
+[2026-10-28T06:29:31.890Z] Collecting pygments>=2.15 (from pytest<10.0,>=8.0->-r requirements.txt (line 3))
+[2026-10-28T06:29:31.890Z]   Using cached pygments-2.21.0-py3-none-any.whl.metadata (2.5 kB)
+[2026-10-28T06:29:31.890Z] Using cached flask-3.1.3-py3-none-any.whl (103 kB)
+[2026-10-28T06:29:31.890Z] Using cached pytest-9.2.0-py3-none-any.whl (411 kB)
+[2026-10-28T06:29:31.890Z] Using cached pluggy-1.7.0-py3-none-any.whl (27 kB)
+[2026-10-28T06:29:31.890Z] Using cached blinker-1.9.0-py3-none-any.whl (8.5 kB)
+[2026-10-28T06:29:31.890Z] Using cached click-8.5.0-py3-none-any.whl (125 kB)
+[2026-10-28T06:29:31.890Z] Using cached iniconfig-2.3.1-py3-none-any.whl (7.6 kB)
+[2026-10-28T06:29:31.890Z] Using cached itsdangerous-2.2.0-py3-none-any.whl (16 kB)
+[2026-10-28T06:29:31.890Z] Using cached jinja2-3.1.6-py3-none-any.whl (134 kB)
+[2026-10-28T06:29:31.890Z] Using cached markupsafe-3.0.4-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (23 kB)
+[2026-10-28T06:29:31.890Z] Using cached packaging-26.3-py3-none-any.whl (129 kB)
+[2026-10-28T06:29:31.890Z] Using cached pygments-2.21.0-py3-none-any.whl (1.3 MB)
+[2026-10-28T06:29:31.890Z] Using cached werkzeug-3.1.9-py3-none-any.whl (228 kB)
+[2026-10-28T06:29:32.141Z] Installing collected packages: pygments, pluggy, packaging, markupsafe, itsdangerous, iniconfig, click, blinker, werkzeug, pytest, jinja2, Flask
+[2026-10-28T06:29:34.625Z]
+[2026-10-28T06:29:34.625Z] Successfully installed Flask-3.1.3 blinker-1.9.0 click-8.5.0 iniconfig-2.3.1 itsdangerous-2.2.0 jinja2-3.1.6 markupsafe-3.0.4 packaging-26.3 pluggy-1.7.0 pygments-2.21.0 pytest-9.2.0 werkzeug-3.1.9
+[2026-10-28T06:29:34.625Z] + /tmp/self-healing-ci-13/bin/python -m pytest -v
+[2026-10-28T06:29:34.875Z] ============================= test session starts ==============================
+[2026-10-28T06:29:34.875Z] platform linux -- Python 3.13.5, pytest-9.2.0, pluggy-1.7.0 -- /tmp/self-healing-ci-13/bin/python
+[2026-10-28T06:29:34.875Z] cachedir: .pytest_cache
+[2026-10-28T06:29:34.875Z] rootdir: /var/jenkins_home/workspace/self-healing-cicd-pipeline
+[2026-10-28T06:29:34.875Z] collecting ... collected 4 items
+[2026-10-28T06:29:34.875Z]
+[2026-10-28T06:29:34.875Z] tests/test_app.py::test_home_endpoint PASSED                             [ 25%]
+[2026-10-28T06:29:34.875Z] tests/test_app.py::test_health_endpoint_is_healthy PASSED                [ 50%]
+[2026-10-28T06:29:34.875Z] tests/test_app.py::test_health_endpoint_is_unhealthy PASSED              [ 75%]
+[2026-10-28T06:29:34.875Z] tests/test_app.py::test_version_endpoint PASSED                          [100%]
+[2026-10-28T06:29:34.875Z]
+[2026-10-28T06:29:34.875Z] ============================== 4 passed in 0.03s ===============================
+Post stage
+[Pipeline] sh
+[2026-10-28T06:29:35.172Z] + [ -n /tmp/self-healing-ci-13 ]
+[2026-10-28T06:29:35.172Z] + rm -rf /tmp/self-healing-ci-13
+[Pipeline] }
+[Pipeline] // node
+[Pipeline] }
+[Pipeline] // stage
+[Pipeline] stage
+[Pipeline] { (Build Docker Image)
+[Pipeline] node
+[2026-10-28T06:29:35.387Z] Running on Jenkins in /var/jenkins_home/workspace/self-healing-cicd-pipeline
+[Pipeline] {
+[Pipeline] checkout
+[2026-10-28T06:29:35.446Z] Selected Git installation does not exist. Using Default
+[2026-10-28T06:29:35.446Z] The recommended git tool is: NONE
+[2026-10-28T06:29:35.446Z] No credentials specified
+[2026-10-28T06:29:35.446Z]  > git rev-parse --resolve-git-dir /var/jenkins_home/workspace/self-healing-cicd-pipeline/.git # timeout=10
+[2026-10-28T06:29:35.453Z] Fetching changes from the remote Git repository
+[2026-10-28T06:29:35.455Z]  > git config remote.origin.url https://github.com/vinaykumar0710/self-healing-cicd-pipeline.git # timeout=10
+[2026-10-28T06:29:35.462Z] Fetching upstream changes from https://github.com/vinaykumar0710/self-healing-cicd-pipeline.git
+[2026-10-28T06:29:35.462Z]  > git --version # timeout=10
+[2026-10-28T06:29:35.469Z]  > git --version # 'git version 2.47.3'
+[2026-10-28T06:29:35.469Z]  > git fetch --tags --force --progress -- https://github.com/vinaykumar0710/self-healing-cicd-pipeline.git +refs/heads/*:refs/remotes/origin/* # timeout=10
+[2026-10-28T06:29:36.951Z]  > git rev-parse refs/remotes/origin/main^{commit} # timeout=10
+[2026-10-28T06:29:36.959Z] Checking out Revision 62563daf8b46f93115c56d063deba7d3b222c316 (refs/remotes/origin/main)
+[2026-10-28T06:29:36.959Z]  > git config core.sparsecheckout # timeout=10
+[2026-10-28T06:29:36.983Z]  > git checkout -f 62563daf8b46f93115c56d063deba7d3b222c316 # timeout=10
+[2026-10-28T06:29:36.999Z] Commit message: "Reduce health check retry log noise"
+[Pipeline] sh
+[2026-10-28T06:29:37.299Z] + set -eu
+[2026-10-28T06:29:37.299Z] + docker build -t self-healing-cicd:ci-13 .
+[2026-10-28T06:29:37.299Z] DEPRECATED: The legacy builder is deprecated and will be removed in a future release.
+[2026-10-28T06:29:37.299Z]             Install the buildx component to build images with BuildKit:
+[2026-10-28T06:29:37.299Z]             https://docs.docker.com/go/buildx/
+[2026-10-28T06:29:37.299Z]
+[2026-10-28T06:29:37.299Z] Sending build context to Docker daemon  263.7kB
+[2026-10-28T06:29:37.299Z]
+[2026-10-28T06:29:37.299Z] Step 1/9 : FROM python:3.12-slim
+[2026-10-28T06:29:37.550Z]  ---> a0f57064cbdc
+[2026-10-28T06:29:37.550Z] Step 2/9 : ENV PYTHONDONTWRITEBYTECODE=1
+[2026-10-28T06:29:37.550Z]  ---> Using cache
+[2026-10-28T06:29:37.550Z]  ---> 47d24e4d2579
+[2026-10-28T06:29:37.550Z] Step 3/9 : ENV PYTHONUNBUFFERED=1
+[2026-10-28T06:29:37.550Z]  ---> Using cache
+[2026-10-28T06:29:37.550Z]  ---> a2b606ba041d
+[2026-10-28T06:29:37.550Z] Step 4/9 : WORKDIR /app
+[2026-10-28T06:29:37.550Z]  ---> Using cache
+[2026-10-28T06:29:37.550Z]  ---> 7ebc6e07d454
+[2026-10-28T06:29:37.550Z] Step 5/9 : COPY requirements.txt .
+[2026-10-28T06:29:37.550Z]  ---> Using cache
+[2026-10-28T06:29:37.550Z]  ---> 3ab29fd65403
+[2026-10-28T06:29:37.550Z] Step 6/9 : RUN pip install --no-cache-dir -r requirements.txt
+[2026-10-28T06:29:37.550Z]  ---> Using cache
+[2026-10-28T06:29:37.550Z]  ---> 8d7ee0cc89b8
+[2026-10-28T06:29:37.550Z] Step 7/9 : COPY app/ ./app/
+[2026-10-28T06:29:37.550Z]  ---> Using cache
+[2026-10-28T06:29:37.550Z]  ---> f7e1cc05ad50
+[2026-10-28T06:29:37.550Z] Step 8/9 : EXPOSE 5000
+[2026-10-28T06:29:37.550Z]  ---> Using cache
+[2026-10-28T06:29:37.550Z]  ---> 68c2e1ad6f87
+[2026-10-28T06:29:37.550Z] Step 9/9 : CMD ["python", "-m", "app.main"]
+[2026-10-28T06:29:37.800Z]  ---> Using cache
+[2026-10-28T06:29:37.800Z]  ---> 8944f6e8d9fb
+[2026-10-28T06:29:37.800Z] Successfully built 8944f6e8d9fb
+[2026-10-28T06:29:37.800Z] Successfully tagged self-healing-cicd:ci-13
+[2026-10-28T06:29:37.800Z] + docker image inspect self-healing-cicd:ci-13
+[Pipeline] script
+[Pipeline] {
+[Pipeline] sh
+[2026-10-28T06:29:38.135Z] + git rev-parse HEAD
+[Pipeline] }
+[Pipeline] // script
+[Pipeline] echo
+[2026-10-28T06:29:38.239Z] Built self-healing-cicd:ci-13 from 62563daf8b46f93115c56d063deba7d3b222c316
+[Pipeline] }
+[Pipeline] // node
+[Pipeline] }
+[Pipeline] // stage
+[Pipeline] stage
+[Pipeline] { (Deploy on Windows Agent)
+[Pipeline] node
+[2026-10-28T06:29:38.453Z] Running on windows-deployer in C:\Users\vinay\jenkins-agent\workspace\self-healing-cicd-pipeline
+[Pipeline] {
+[Pipeline] deleteDir
+[Pipeline] git
+[2026-10-28T06:29:38.924Z] Selected Git installation does not exist. Using Default
+[2026-10-28T06:29:38.924Z] The recommended git tool is: NONE
+[2026-10-28T06:29:38.932Z] No credentials specified
+[2026-10-28T06:29:38.935Z] Cloning the remote Git repository
+[2026-10-28T06:29:38.936Z] Cloning repository https://github.com/vinaykumar0710/self-healing-cicd-pipeline.git
+[2026-10-28T06:29:38.937Z]  > git init C:\Users\vinay\jenkins-agent\workspace\self-healing-cicd-pipeline # timeout=10
+[2026-10-28T06:29:39.063Z] Fetching upstream changes from https://github.com/vinaykumar0710/self-healing-cicd-pipeline.git
+[2026-10-28T06:29:39.063Z]  > git --version # timeout=10
+[2026-10-28T06:29:39.139Z]  > git --version # 'git version 2.53.0.windows.2'
+[2026-10-28T06:29:39.140Z]  > git fetch --tags --force --progress -- https://github.com/vinaykumar0710/self-healing-cicd-pipeline.git +refs/heads/*:refs/remotes/origin/* # timeout=10
+[2026-10-28T06:29:41.733Z] Avoid second fetch
+[2026-10-28T06:29:41.826Z] Checking out Revision 62563daf8b46f93115c56d063deba7d3b222c316 (refs/remotes/origin/main)
+[2026-10-28T06:29:41.538Z]  > git config remote.origin.url https://github.com/vinaykumar0710/self-healing-cicd-pipeline.git # timeout=10
+[2026-10-28T06:29:41.627Z]  > git config --add remote.origin.fetch +refs/heads/*:refs/remotes/origin/* # timeout=10
+[2026-10-28T06:29:41.736Z]  > git rev-parse "refs/remotes/origin/main^{commit}" # timeout=10
+[2026-10-28T06:29:41.828Z]  > git config core.sparsecheckout # timeout=10
+[2026-10-28T06:29:41.912Z]  > git checkout -f 62563daf8b46f93115c56d063deba7d3b222c316 # timeout=10
+[2026-10-28T06:29:42.037Z]  > git branch -a -v --no-abbrev # timeout=10
+[2026-10-28T06:29:42.270Z] Commit message: "Reduce health check retry log noise"
+[Pipeline] powershell
+[2026-10-28T06:29:42.136Z]  > git checkout -b main 62563daf8b46f93115c56d063deba7d3b222c316 # timeout=10
+[2026-10-28T06:29:43.764Z] Using image: self-healing-cicd:ci-13
+[2026-10-28T06:29:43.764Z] Image ID: sha256:8944f6e8d9fb4ad1116f7e4dda3c00d8fb284322ca60e9b46566faa044c4fa25
+[2026-10-28T06:29:43.764Z] Commit: 62563daf8b46f93115c56d063deba7d3b222c316
+[2026-10-28T06:30:01.937Z] Using CI-built candidate image: self-healing-cicd:ci-13
+[2026-10-28T06:30:01.937Z] Candidate health attempt 1/5 failed (exit code: 1). Application is not ready yet or the health endpoint is temporarily unreachable.
+[2026-10-28T06:30:01.937Z] Candidate is healthy. Preparing app-green.
+[2026-10-28T06:30:01.937Z]  Container self-healing-cicd-app-green-1 Recreate
+[2026-10-28T06:30:01.937Z]  Container self-healing-cicd-app-green-1 Recreated
+[2026-10-28T06:30:01.937Z]  Container self-healing-cicd-app-green-1 Starting
+[2026-10-28T06:30:01.937Z]  Container self-healing-cicd-app-green-1 Started
+[2026-10-28T06:30:01.937Z] Health check attempt 1/5 failed for app-green. Application is not ready yet or the health endpoint is temporarily unreachable.
+[2026-10-28T06:30:01.937Z] Health check passed for app-green.
+[2026-10-28T06:30:01.937Z] nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
+[2026-10-28T06:30:01.937Z] nginx: configuration file /etc/nginx/nginx.conf test is successful
+[2026-10-28T06:30:01.937Z] 2026/10/28 06:29:59 [notice] 207#207: signal process started
+[2026-10-28T06:30:01.937Z] Deployment succeeded: build-13 (green).
+[2026-10-28T06:30:01.937Z] Deployment verified: build-13
+[Pipeline] }
+[Pipeline] // node
+[Pipeline] }
+[Pipeline] // stage
+[Pipeline] stage
+[Pipeline] { (Declarative: Post Actions)
+[Pipeline] script
+[Pipeline] {
+[Pipeline] echo
+[2026-10-28T06:30:02.195Z] PIPELINE PASSED: Tests, image build, deployment and health verification completed successfully.
+[Pipeline] }
+[Pipeline] // script
+[Pipeline] }
+[Pipeline] // stage
+[Pipeline] }
+[Pipeline] // timestamps
+[Pipeline] }
+[Pipeline] // withEnv
+[Pipeline] End of Pipeline
+Finished: SUCCESS
