@@ -147,16 +147,20 @@ pipeline {
                         Write-Host "WARNING: Post-promotion failure simulation is ENABLED."
                     }
 
-                    # Run the controller in a child PowerShell process so its
-                    # exit code can be captured without terminating this script.
-                    & powershell.exe @controllerArgs
+                    # Run the controller in a child process so its exit code
+                    # can be inspected without terminating this PowerShell script.
+                    $controllerOutput = & powershell.exe @controllerArgs 2>&1
                     $controllerExitCode = $LASTEXITCODE
+
+                    $controllerOutput | ForEach-Object {
+                        Write-Host $_
+                    }
 
                     $expectedVersion = "build-$env:BUILD_NUMBER"
                     $auditFile = Join-Path $env:RUNTIME_ROOT "logs\\deployments.jsonl"
 
                     if ($isRollbackTest) {
-                        # The injected deployment failure must return nonzero.
+                        # The injected failure must cause the controller to exit nonzero.
                         if ($controllerExitCode -eq 0) {
                             throw "Rollback test failed: controller unexpectedly returned success after injected failure."
                         }
@@ -178,7 +182,7 @@ pipeline {
                             throw "Rollback test failed: latest audit record is not valid JSON."
                         }
 
-                        # Require the audit record to belong to this exact build.
+                        # The latest record must belong to this exact build.
                         if (
                             $record.candidate_version -ne $expectedVersion -or
                             $record.commit_sha -ne $actualCommit -or
@@ -214,6 +218,11 @@ pipeline {
                         }
 
                         Write-Host "ROLLBACK TEST PASSED: injected failure was detected; the previous release was restored and verified."
+
+                        # The controller's nonzero code was expected and verified.
+                        # Clear the native exit-code marker so Jenkins does not
+                        # mark this successfully verified test as a failed step.
+                        $global:LASTEXITCODE = 0
                     }
                     else {
                         if ($controllerExitCode -ne 0) {
@@ -232,6 +241,7 @@ pipeline {
                         }
 
                         Write-Host "Deployment verified: $($health.version)"
+                        $global:LASTEXITCODE = 0
                     }
                 '''
             }
